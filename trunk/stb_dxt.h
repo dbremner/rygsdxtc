@@ -41,6 +41,8 @@
 //     and "high quality" using mode.
 //
 // version history:
+//   v1.06  - (cyan) implement Fabian Giesen's comments
+//   v1.05  - (cyan) speed optimizations
 //   v1.04  - (ryg) default to no rounding bias for lerped colors (as per S3TC/DX10 spec);
 //            single color match fix (allow for inexact color interpolation);
 //            optimal DXT5 index finder; "high quality" mode that runs multiple refinement steps.
@@ -58,7 +60,6 @@
 // Comment this define if you want to revert to ryg's original code
 #define NEW_OPTIMISATIONS
 //*******************************************************************
-
 
 // compression mode (bitflags)
 #define STB_DXT_NORMAL    0
@@ -354,27 +355,20 @@ static void stb__OptimizeColorsBlock(unsigned char *block, unsigned short *pmax1
     int muv,minv,maxv;
 
 #ifdef NEW_OPTIMISATIONS
-#   define MIN(a,b)      (int)a + ( ((int)b-a) & ( ((int)a-b) >> 31 ) )
-#   define MAX(a,b)      (int)a + ( ((int)b-a) & ( ((int)b-a) >> 31 ) )
-#   define RANGE(a,b,n)  int total##n = a+b; int min##n = MIN(a,b); int max##n = total##n - min##n;
+#   define MIN(a,b)      (int)a + ( ((int)b-a) & ( ((int)b-a) >> 31 ) )
+#   define MAX(a,b)      (int)a + ( ((int)b-a) & ( ((int)a-b) >> 31 ) )
+#   define RANGE(a,b,n)  int min##n = MIN(a,b); int max##n = a+b - min##n; muv += a+b;
 #   define MINMAX(a,b,n) int min##n = MIN(min##a, min##b); int max##n = MAX(max##a, max##b); 
 
-	RANGE(bp[0], bp[4], 1);
-	muv = total1;
-	RANGE(bp[8], bp[12], 2);
-	muv += total2;
+	muv = 0;
+	RANGE(bp[0],  bp[4],  1);
+	RANGE(bp[8],  bp[12], 2);
 	RANGE(bp[16], bp[20], 3);
-	muv += total3;
 	RANGE(bp[24], bp[28], 4);
-	muv += total4;
 	RANGE(bp[32], bp[36], 5);
-	muv += total5;
 	RANGE(bp[40], bp[44], 6);
-	muv += total6;
 	RANGE(bp[48], bp[52], 7);
-	muv += total7;
 	RANGE(bp[56], bp[60], 8);
-	muv += total8;
 
 	MINMAX(1,2,9);
 	MINMAX(3,4,10);
@@ -696,15 +690,12 @@ static void stb__CompressAlphaBlock(unsigned char *dest,unsigned char *src,int m
    dest += 2;
 
 #ifdef NEW_OPTIMISATIONS
-   // opaque shortcut
-   if (mn==255)
+   // mono-alpha shortcut
+   if (mn==mx)
    {
-	   ((unsigned char *)dest)[2] = 0x49;
-	   ((unsigned char *)dest)[3] = 0x92;
-	   ((unsigned char *)dest)[4] = 0x24;
-	   ((unsigned char *)dest)[5] = 0x49;
-	   ((unsigned char *)dest)[6] = 0x92;
-	   ((unsigned char *)dest)[7] = 0x24;
+	   *(unsigned short*)dest = 0;
+	   dest += 2;
+	   *(unsigned int*)dest = 0;
 	   return;
    }
 #endif
@@ -745,6 +736,7 @@ static void stb__CompressAlphaBlock(unsigned char *dest,unsigned char *src,int m
 	}
 }
 
+
 static void stb__InitDXT()
 {
    int i;
@@ -764,6 +756,7 @@ static void stb__InitDXT()
    stb__PrepareOptTable(&stb__OMatch5[0][0],stb__Expand5,32);
    stb__PrepareOptTable(&stb__OMatch6[0][0],stb__Expand6,64);
 }
+
 
 void stb_compress_dxt_block(unsigned char *dest, const unsigned char *src, int alpha, int mode)
 {
