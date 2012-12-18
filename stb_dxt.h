@@ -507,6 +507,7 @@ inline static int stb__sclamp(float y, int p0, int p1)
 #endif
 }
 
+
 // The refinement function. (Clever code, part 2)
 // Tries to optimize colors to suit block contents better.
 // (By solving a least squares system via normal equations+Cramer's rule)
@@ -670,7 +671,7 @@ static void stb__CompressColorBlock(unsigned char *dest, unsigned char *block, i
 }
 
 // Alpha block compression (this is easy for a change)
-static void stb__CompressAlphaBlock(unsigned char *dest,unsigned char *src,int mode)
+static void stb__CompressAlphaBlock(unsigned char *dest, unsigned char *src, int mode)
 {
    int i,dist,bias,dist4,dist2,bits,mask;
 
@@ -704,7 +705,6 @@ static void stb__CompressAlphaBlock(unsigned char *dest,unsigned char *src,int m
 	// given the choice of mx/mn, these indices are optimal:
 	// http://fgiesen.wordpress.com/2009/12/15/dxt5-alpha-block-index-determination/
 	dist = mx-mn;
-	//printf("mn = %i; mx = %i; dist = %i\n", mn, mx, dist);
 	dist4 = dist*4;
 	dist2 = dist*2;
 	bias = (dist < 8) ? (dist - 1) : (dist/2 + 2);
@@ -716,6 +716,30 @@ static void stb__CompressAlphaBlock(unsigned char *dest,unsigned char *src,int m
 		int a = src[i*4+3]*7 + bias;
 		int ind,t;
 
+#ifdef NEW_OPTIMISATIONS
+		static const int index[8] = { 1, 7, 6, 5, 4, 3, 2, 0 };
+
+		// select index. this is a "linear scale" lerp factor between 0 (val=min) and 7 (val=max).
+		t = (a >= dist4); ind  = t*4; a -= dist4 * t;
+		t = (a >= dist2); ind += t*2; a -= dist2 * t;
+		ind += (a >= dist);
+      
+		// convert index
+		ind = index[ind];
+
+		// write index
+		mask |= ind << bits;
+		if ((bits += 3) == 24)
+		{
+			*dest++ = mask; 
+			mask >>= 8;     
+			*dest++ = mask; 
+			mask >>= 8;     
+			*dest++ = mask; 
+			mask = 0;
+			bits = 0;
+		}
+#else
 		// select index. this is a "linear scale" lerp factor between 0 (val=min) and 7 (val=max).
 		t = (a >= dist4) ? -1 : 0; ind =  t & 4; a -= dist4 & t;
 		t = (a >= dist2) ? -1 : 0; ind += t & 2; a -= dist2 & t;
@@ -733,9 +757,9 @@ static void stb__CompressAlphaBlock(unsigned char *dest,unsigned char *src,int m
 			mask >>= 8;     
 			bits -= 8;
 		}
+#endif
 	}
 }
-
 
 static void stb__InitDXT()
 {
@@ -757,7 +781,6 @@ static void stb__InitDXT()
    stb__PrepareOptTable(&stb__OMatch6[0][0],stb__Expand6,64);
 }
 
-
 void stb_compress_dxt_block(unsigned char *dest, const unsigned char *src, int alpha, int mode)
 {
    static int init=1;
@@ -777,8 +800,6 @@ void stb_compress_dxt_block(unsigned char *dest, const unsigned char *src, int a
 }
 
 int imin(int x, int y) { return (x < y) ? x : y; }
-
-
 
 
 
